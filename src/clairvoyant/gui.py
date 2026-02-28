@@ -18,8 +18,12 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QThread, QTimer
 from PySide6.QtGui import QIcon, QCursor
 import os
+import sys
 from . import stego, crypto
 
+def resource_path(relative_path):
+    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
 
 class Worker(QThread):
     done = Signal()
@@ -360,17 +364,11 @@ class MainWindow(QWidget):
 def main():
     app = QApplication([])
     # load application icon 
-    for candidate in ("assets/icon.ico", "assets/icon.png"):
-        if os.path.exists(candidate):
-            app.setWindowIcon(QIcon(candidate))
-            break
+    icon_path = resource_path("assets/icon.png")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
+
     w = MainWindow()
-    # also set window icon from app icon
-    try:
-        icon = app.windowIcon()
-        if not icon.isNull():
-            w.setWindowIcon(icon)
-    except Exception:
-        pass
+    w.setWindowIcon(QIcon(icon_path))
     w.show()
     app.exec()
