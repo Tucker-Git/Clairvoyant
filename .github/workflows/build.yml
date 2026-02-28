@@ -63,8 +63,8 @@ jobs:
           pyinstaller --onefile --windowed --name Clairvoyant \
             --add-binary "assets/ffmpeg/windows/ffmpeg.exe;assets/ffmpeg/windows" \
             --add-binary "assets/ffmpeg/windows/ffprobe.exe;assets/ffmpeg/windows" \
-            --add-data "assets/icon.ico;assets" \
-            --icon assets/icon.ico main.py
+            --add-data "assets/icon.png;assets" \
+            --icon assets/icon.png main.py
 
       - name: Build with PyInstaller (Linux)
         if: runner.os == 'Linux'
@@ -72,7 +72,8 @@ jobs:
           pyinstaller --onefile --name Clairvoyant \
             --add-binary "assets/ffmpeg/linux/ffmpeg:assets/ffmpeg/linux" \
             --add-binary "assets/ffmpeg/linux/ffprobe:assets/ffmpeg/linux" \
-            --add-data "assets/icon.png:assets" main.py
+            --add-data "assets/icon.png:assets" \
+            --icon assets/icon.png main.py
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
