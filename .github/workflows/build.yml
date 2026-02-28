@@ -60,10 +60,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          pyinstaller --onefile --windowed --name Clairvoyant \
-            --add-binary "assets/ffmpeg/windows/ffmpeg.exe;assets/ffmpeg/windows" \
-            --add-binary "assets/ffmpeg/windows/ffprobe.exe;assets/ffmpeg/windows" \
-            --add-data "assets/icon.png;assets" \
+          pyinstaller --onefile --windowed --name Clairvoyant `
+            --add-binary "assets/ffmpeg/windows/ffmpeg.exe;assets/ffmpeg/windows" `
+            --add-binary "assets/ffmpeg/windows/ffprobe.exe;assets/ffmpeg/windows" `
+            --add-data "assets/icon.png;assets" `
             --icon assets/icon.png main.py
 
       - name: Build with PyInstaller (Linux)
