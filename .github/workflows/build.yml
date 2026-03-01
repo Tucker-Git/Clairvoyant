@@ -2,7 +2,8 @@ name: Build and publish executables
 
 on:
   push:
-    branches: [ main ]
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
 
 jobs:
@@ -37,13 +38,10 @@ jobs:
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path assets\ffmpeg\windows | Out-Null
-          $ff = (Get-Command ffmpeg).Source
-          $fp = (Get-Command ffprobe).Source
+          $ff = (where.exe ffmpeg) -split "`n" | Select-Object -First 1
           Copy-Item $ff -Destination assets\ffmpeg\windows\ffmpeg.exe -Force
-          Copy-Item $fp -Destination assets\ffmpeg\windows\ffprobe.exe -Force
-          Write-Host "ffmpeg: $ff"
-          Write-Host "ffprobe: $fp"
-          dir assets\ffmpeg\windows
+          $fp = (where.exe ffprobe) -split "`n" | Select-Object -First 1
+          if ($fp) { Copy-Item $fp -Destination assets\ffmpeg\windows\ffprobe.exe -Force }
 
       - name: Prepare bundled ffmpeg assets (Linux)
         if: runner.os == 'Linux'
@@ -51,9 +49,7 @@ jobs:
           mkdir -p assets/ffmpeg/linux
           cp "$(which ffmpeg)" assets/ffmpeg/linux/ffmpeg
           cp "$(which ffprobe)" assets/ffmpeg/linux/ffprobe || true
-          chmod +x assets/ffmpeg/linux/ffmpeg
-          chmod +x assets/ffmpeg/linux/ffprobe || true
-          ls -la assets/ffmpeg/linux
+          chmod +x assets/ffmpeg/linux/ffmpeg || true
 
       - name: Install Python deps
         run: |
@@ -80,8 +76,39 @@ jobs:
             --add-data "assets/icon.png:assets" \
             --icon assets/icon.png main.py
 
-      - name: Upload artifacts
+      - name: Rename artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          mv dist\Clairvoyant.exe dist\Clairvoyant-Windows-${{ github.ref_name }}.exe
+
+      - name: Rename artifact (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mv dist/Clairvoyant dist/Clairvoyant-Ubuntu-${{ github.ref_name }}
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: Clairvoyant-${{ matrix.os }}
-          path: dist/Clairvoyant*
+          path: dist/Clairvoyant-*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Clairvoyant ${{ github.ref_name }}
+          files: |
+            Clairvoyant-Windows-${{ github.ref_name }}.exe
+            Clairvoyant-Ubuntu-${{ github.ref_name }}
