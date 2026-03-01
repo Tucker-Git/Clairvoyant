@@ -1,64 +1,25 @@
-name: Build and publish executables
+name: Build and Release
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:
+    tags:
+      - 'v*.*.*'   # triggers on tags like v1.0.0, v1.2.3 etc
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [windows-latest, ubuntu-latest]
+  build-windows:
+    runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install ffmpeg on Windows
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: |
-          choco install -y ffmpeg
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
 
-      - name: Install ffmpeg on Linux
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-
-      - name: Prepare bundled ffmpeg assets (Windows)
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: |
-          New-Item -ItemType Directory -Force -Path assets\ffmpeg\windows | Out-Null
-          $ff = (where.exe ffmpeg) -split "`n" | Select-Object -First 1
-          Copy-Item $ff -Destination assets\ffmpeg\windows\ffmpeg.exe -Force
-          $fp = (where.exe ffprobe) -split "`n" | Select-Object -First 1
-          if ($fp) { Copy-Item $fp -Destination assets\ffmpeg\windows\ffprobe.exe -Force }
-
-      - name: Prepare bundled ffmpeg assets (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          mkdir -p assets/ffmpeg/linux
-          cp "$(which ffmpeg)" assets/ffmpeg/linux/ffmpeg
-          cp "$(which ffprobe)" assets/ffmpeg/linux/ffprobe || true
-          chmod +x assets/ffmpeg/linux/ffmpeg || true
-
-      - name: Install Python deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Build with PyInstaller (Windows)
-        if: runner.os == 'Windows'
-        shell: powershell
+      - name: Build
         run: |
           pyinstaller --onefile --windowed --name Clairvoyant `
             --add-binary "assets/ffmpeg/windows/ffmpeg.exe;assets/ffmpeg/windows" `
@@ -66,17 +27,66 @@ jobs:
             --add-data "assets/icon.png;assets" `
             --icon assets/icon.png main.py
 
-      - name: Build with PyInstaller (Linux)
-        if: runner.os == 'Linux'
+      - name: Rename artifact
+        run: mv dist/Clairvoyant.exe dist/Clairvoyant-Windows-${{ github.ref_name }}.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clairvoyant-Windows-${{ github.ref_name }}
+          path: dist/Clairvoyant-Windows-${{ github.ref_name }}.exe
+
+  build-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Build
         run: |
-          pyinstaller --onefile --name Clairvoyant \
+          pyinstaller --onefile --windowed --name Clairvoyant \
             --add-binary "assets/ffmpeg/linux/ffmpeg:assets/ffmpeg/linux" \
             --add-binary "assets/ffmpeg/linux/ffprobe:assets/ffmpeg/linux" \
             --add-data "assets/icon.png:assets" \
             --icon assets/icon.png main.py
 
-      - name: Upload artifacts
+      - name: Rename artifact
+        run: mv dist/Clairvoyant dist/Clairvoyant-Ubuntu-${{ github.ref_name }}
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Clairvoyant-${{ matrix.os }}
-          path: dist/Clairvoyant*
+          name: Clairvoyant-Ubuntu-${{ github.ref_name }}
+          path: dist/Clairvoyant-Ubuntu-${{ github.ref_name }}
+
+  release:
+    needs: [build-windows, build-ubuntu]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Clairvoyant-Windows-${{ github.ref_name }}
+
+      - name: Download Ubuntu artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Clairvoyant-Ubuntu-${{ github.ref_name }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Clairvoyant ${{ github.ref_name }}
+          files: |
+            Clairvoyant-Windows-${{ github.ref_name }}.exe
+            Clairvoyant-Ubuntu-${{ github.ref_name }}

@@ -39,5 +39,6 @@ Features
 Notes & limitations
 - Default video method: this method appends the payload to the file (marker + length + payload). This is resilient to compression but means the payload embedded file will grow by the payload size.
 - Experimental LSB mode: an LSB-in-frame video mode is toggleable(`src/clairvoyant/stego.py`). This attempts to hide bits in the per-frame pixel LSBs but is fragile: it only survives when the output uses a lossless codec and will be destroyed by lossy re-encoding or container conversions. Use the LSB mode only for lossless workflows and with backups of original files. When `ffmpeg` is available the app will automatically re-encode to lossless frames for LSB operations to improve reliability.
+- NOTE: LSB encoding will not work with all video formats. If you encounter an error during encoding, try changing the extension to one that works consistently, like .mkv
 - Capacity estimates are conservative (file-size based for video) and are shown as an estimate only.
 - No code signing or native installers are included. Use with care and keep backups of original media.
