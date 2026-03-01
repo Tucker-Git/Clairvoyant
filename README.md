@@ -1,4 +1,5 @@
-# Clairvoyant
+# Clairvoyant by Tucker Anderson
+Icons provided by https://icons8.com/
 
 Clairvoyant is a cross-platform desktop steganography tool.
 
