@@ -1,44 +1,59 @@
-# Clairvoyant, your local steganographer
+# Clairvoyant
 
-Icons provided by https://icons8.com/
+> A cross-platform desktop steganography tool for embedding and extracting AES encrypted payloads within images and videos.
 
-Clairvoyant is a cross-platform desktop steganography tool.
+Icons provided by [Icons8](https://icons8.com/)
 
-Quickstart
+---
 
-Option A: Install a pre-built EXE (Windows)
-- You can download a prebuilt native executable from the project's GitHub Releases instead of creating a virtual environment and running `main.py`. 
-- Releases (intend to) include a single-file Windows EXE and Linux build produced by the repository CI. Automatic releases are on hold, but a pre-release RC version of the Windows build is available now.
-- After downloading the Windows EXE, double-click to run it. For Linux mark it executable: `chmod +x Clairvoyant` and run `./Clairvoyant`.
+## Quickstart
 
-Option B: Create a virtual environment and run the program manually
+### Option A: Download a pre-built executable (recommended)
 
-- NOTE: It may be necessary to install a version of OpenH264 on your machine to take advantage of the experimental LSB mode for encoding payloads into video files.
+Pre-built binaries are available on the [Releases](../../releases) page.
+
+**Windows:** Download `Clairvoyant-Windows-<version>.exe` and double-click to run.
+
+**Ubuntu:** Download `Clairvoyant-Ubuntu-<version>` and run it:
+```bash
+./Clairvoyant-Ubuntu-<version>
+```
+> If you get a permission denied error, mark it executable first: `chmod +x Clairvoyant-Ubuntu-<version>`
+
+---
+
+### Option B: Run from source
+
+> To use the experimental LSB video mode you may need to install OpenH264 on your system.
 
 1. Create and activate a virtual environment, then install dependencies:
-
 ```bash
 python -m venv .venv
-.venv\Scripts\activate     # Windows
-# or: 
-source .venv/bin/activate  # Linux
+.venv\Scripts\activate      # Windows
+source .venv/bin/activate   # Linux
 pip install -r requirements.txt
 ```
 
-2. Run the GUI:
-
+2. Run the app:
 ```bash
 python main.py
 ```
 
-Features
-- Image steganography: embed/extract using 1 LSB per color byte for PNG/BMP.
-- Video steganography: a robust append/read method that appends an envelope to the video file (marker + length + payload). This avoids lossy re-encoding and survives common containers.
-- Optional payload encryption using AES-GCM with a PBKDF2-derived key (passphrase).
+---
 
-Notes & limitations
-- Default video method: this method appends the payload to the file (marker + length + payload). This is resilient to compression but means the payload embedded file will grow by the payload size.
-- Experimental LSB mode: an LSB-in-frame video mode is toggleable(`src/clairvoyant/stego.py`). This attempts to hide bits in the per-frame pixel LSBs but is fragile: it only survives when the output uses a lossless codec and will be destroyed by lossy re-encoding or container conversions. Use the LSB mode only for lossless workflows and with backups of original files. When `ffmpeg` is available the app will automatically re-encode to lossless frames for LSB operations to improve reliability.
-- NOTE: LSB encoding will not work with all video formats. If you encounter an error during encoding, try changing the extension to one that works consistently, like .mkv
-- Capacity estimates are conservative (file-size based for video) and are shown as an estimate only.
-- No code signing or native installers are included. Use with care and keep backups of original media.
+## Features
+
+**Image steganography** — embed and extract payloads using 1 LSB per color channel byte, supporting PNG and BMP formats.
+
+**Video steganography (default)** — appends a structured envelope (marker + length + payload) directly to the video file. This avoids lossy re-encoding and is resilient to container differences, at the cost of increasing the output file size by the size of the payload.
+
+**Video steganography (experimental LSB mode)** — hides payload bits in per-frame pixel LSBs. This mode is fragile and only survives lossless codecs — lossy re-encoding or container conversion will destroy the payload. When FFmpeg is available, the app will automatically re-encode to lossless frames to improve reliability. Use only in lossless workflows and keep backups of your originals. If you encounter errors, try `.mkv` as your output format.
+
+**Payload encryption** — optionally encrypt your payload with AES-GCM using a PBKDF2-derived key (passphrase) before embedding.
+
+---
+
+## Limitations
+
+- Capacity estimates for video are file-size based and should be treated as approximations only.
+- No code signing or native installers are included. Keep backups of original media files before embedding.
