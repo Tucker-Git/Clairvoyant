@@ -1,4 +1,4 @@
-#Clairvoyant, your local steganographer
+# Clairvoyant, your local steganographer
 
 Icons provided by https://icons8.com/
 
