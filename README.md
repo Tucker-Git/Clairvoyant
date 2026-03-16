@@ -4,7 +4,7 @@
   <img src="assets/icon.png" width="128" height="128" alt="Clairvoyant icon" />
 </div>
 
-> Hide secret messages inside images and videos. Optionally encrypt them for extra privacy.
+> Hide and extract text within images and videos.
 
 Icons provided by [Icons8](https://icons8.com/)
 
