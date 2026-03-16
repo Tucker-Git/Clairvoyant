@@ -189,12 +189,8 @@ class MainWindow(QWidget):
         cap_h.addWidget(info)
         # allow clicking the info label to show a dialog with capacity details
         def _info_clicked(ev):
-            dlg = QDialog(self)
-            dlg.setWindowTitle("Capacity details")
-            v = QVBoxLayout(dlg)
-            te = QTextEdit()
-            te.setReadOnly(True)
-            te.setPlainText(
+            self._show_text_dialog(
+                "Capacity details",
                 "Capacity varies by method:\n\n"
                 "1. IMAGES (LSB mode):\n"
                 "   Capacity = (width × height × 3 color channels × 1 bit per channel) - header\n"
@@ -209,11 +205,6 @@ class MainWindow(QWidget):
                 "   Only survives lossless codecs.\n\n"
                 "Toggle LSB mode for videos to see capacity switch between unlimited and frame-based estimates."
             )
-            v.addWidget(te)
-            b = QPushButton("OK")
-            b.clicked.connect(dlg.accept)
-            v.addWidget(b)
-            dlg.exec()
         info.mouseReleaseEvent = _info_clicked
         cap_h.setAlignment(Qt.AlignLeft)
         layout.addLayout(cap_h)
@@ -229,23 +220,14 @@ class MainWindow(QWidget):
         lsb_h.addStretch()
         # allow clicking the info label to show a dialog with LSB details
         def _lsb_info_clicked(ev):
-            dlg = QDialog(self)
-            dlg.setWindowTitle("LSB mode details")
-            v = QVBoxLayout(dlg)
-            te = QTextEdit()
-            te.setReadOnly(True)
-            te.setPlainText(
+            self._show_text_dialog(
+                "LSB mode details",
                 "When enabled, embedding will try to hide bits in per-frame pixel LSBs. "
                 "This only survives lossless codecs and is fragile.\n\n"
                 "For best results, use .mkv output format. "
                 "On Windows, h264-encoded MP4 files may have codec issues.\n\n"
                 "Recommended: use the default append mode unless you specifically need LSB embedding."
             )
-            v.addWidget(te)
-            b = QPushButton("OK")
-            b.clicked.connect(dlg.accept)
-            v.addWidget(b)
-            dlg.exec()
         lsb_info.mouseReleaseEvent = _lsb_info_clicked
         layout.addLayout(lsb_h)
         # connect LSB checkbox to update capacity estimates
@@ -288,12 +270,9 @@ class MainWindow(QWidget):
                 else:
                     cap = stego.estimate_video_capacity(self.current_path)
                 self.cached_capacity = cap
-                if cap == -1:
-                    self.capacity_label.setText("(unlimited - append mode)")
-                else:
-                    self.capacity_label.setText(f"~{cap} bytes")
-            except Exception:
-                self.capacity_label.setText("(unable to estimate)")
+                self._update_capacity_display(cap)
+            except (OSError, ValueError):
+                self._update_capacity_display(None)
                 self.cached_capacity = None
             # update message metrics with new capacity
             self._update_message_metrics()
@@ -320,12 +299,9 @@ class MainWindow(QWidget):
                 else:
                     cap = stego.estimate_image_capacity(path)
                 self.cached_capacity = cap
-                if cap == -1:
-                    self.capacity_label.setText("(unlimited - append mode)")
-                else:
-                    self.capacity_label.setText(f"~{cap} bytes")
-            except Exception:
-                self.capacity_label.setText("(unable to estimate)")
+                self._update_capacity_display(cap)
+            except (OSError, ValueError):
+                self._update_capacity_display(None)
                 self.cached_capacity = None
             # update message metrics when opening a new file
             self._update_message_metrics()
@@ -357,12 +333,10 @@ class MainWindow(QWidget):
                 self.msg_size_label.setText(f"Message size: {file_size} bytes")
                 # update capacity if we have a file open
                 if self.cached_capacity is not None:
-                    if self.cached_capacity == -1:
-                        self.cap_used_label.setText("Capacity used: (unlimited)")
-                    elif self.cached_capacity > 0:
-                        pct = file_size * 100 / self.cached_capacity
-                        self.cap_used_label.setText(f"Capacity used: {pct:.1f}%")
-            except Exception as e:
+                    self._update_capacity_display(self.cached_capacity, file_size)
+                else:
+                    self.cap_used_label.setText("Capacity used: N/A")
+            except (IOError, OSError, UnicodeDecodeError) as e:
                 QMessageBox.critical(self, "Error", f"Failed to read file: {e}")
 
     def _clear_payload_file(self):
@@ -373,7 +347,16 @@ class MainWindow(QWidget):
         self.clear_file_btn.setVisible(False)
         self._update_message_metrics()
 
-    def _show_text_dialog(self, title: str, text: str):
+    def _show_text_dialog(self, title: str, text: str) -> int:
+        """Display a generic read-only text dialog.
+
+        Args:
+            title: Dialog window title
+            text: Plain text content to display
+
+        Returns:
+            Dialog result code (QDialog.Accepted for OK button)
+        """
         dlg = QDialog(self)
         dlg.setWindowTitle(title)
         v = QVBoxLayout(dlg)
@@ -384,7 +367,31 @@ class MainWindow(QWidget):
         b = QPushButton("OK")
         b.clicked.connect(dlg.accept)
         v.addWidget(b)
-        dlg.exec()
+        return dlg.exec()
+
+    def _update_capacity_display(self, capacity: Optional[int], used_bytes: Optional[int] = None):
+        """Update capacity label with consistent formatting.
+
+        Displays capacity as:
+        - "(unable to estimate)" if capacity is None
+        - "(unlimited - append mode)" if capacity is -1
+        - "Capacity used: X.X%" if used_bytes is provided
+        - "~X bytes" otherwise
+
+        Args:
+            capacity: Capacity in bytes (-1 for unlimited, None for error)
+            used_bytes: Optional bytes used to show percentage instead of absolute
+        """
+        if capacity is None:
+            self.capacity_label.setText("(unable to estimate)")
+        elif capacity == -1:
+            self.capacity_label.setText("(unlimited - append mode)")
+        elif used_bytes is not None and capacity > 0:
+            pct = used_bytes * 100 / capacity
+            self.cap_used_label.setText(f"Capacity used: {pct:.1f}%")
+            return
+        else:
+            self.capacity_label.setText(f"~{capacity} bytes")
 
     def _show_extracted_message(self, data: bytes):
         """decrypt (if passphrase set) and display extracted message."""
@@ -393,9 +400,11 @@ class MainWindow(QWidget):
                 try:
                     data = crypto.decrypt(data, self.pass_edit.text())
                 except Exception:
+                    # Decryption failed; likely wrong passphrase or tampered data
                     pass
             text = data.decode("utf-8")
-        except Exception:
+        except UnicodeDecodeError:
+            # Not valid UTF-8; show repr of bytes instead
             text = repr(data)
         self._show_text_dialog("Extracted message", text)
 
@@ -426,7 +435,7 @@ class MainWindow(QWidget):
             try:
                 with open(self.payload_file, 'r', encoding='utf-8') as f:
                     text = f.read().encode("utf-8")
-            except Exception as e:
+            except (IOError, OSError, UnicodeDecodeError) as e:
                 QMessageBox.critical(self, "Error", f"Failed to read payload file: {e}")
                 return
         else:
@@ -445,7 +454,7 @@ class MainWindow(QWidget):
                 cap_bytes = stego.estimate_video_capacity(self.current_path)
             else:
                 cap_bytes = stego.estimate_image_capacity(self.current_path)
-        except Exception:
+        except (OSError, ValueError):
             cap_bytes = None
 
         try:
