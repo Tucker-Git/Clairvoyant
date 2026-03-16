@@ -21,8 +21,8 @@ def _find_ffmpeg() -> str:
     Ensures the binary is executable on POSIX by setting mode to 755.
     Returns the path to the ffmpeg binary or `None` if not found.
     """
-    plat = 'windows' if sys.platform.startswith('win') else 'macos' if sys.platform == 'darwin' else 'linux'
-    exe_name = 'ffmpeg.exe' if plat == 'windows' else 'ffmpeg'
+    platform = 'windows' if sys.platform.startswith('win') else 'macos' if sys.platform == 'darwin' else 'linux'
+    exe_name = 'ffmpeg.exe' if platform == 'windows' else 'ffmpeg'
 
     # candidate in bundle (PyInstaller puts files into _MEIPASS)
     base_candidates = []
@@ -33,7 +33,7 @@ def _find_ffmpeg() -> str:
     base_candidates.append(pkg_root)
 
     for base in base_candidates:
-        candidate = os.path.join(base, 'assets', 'ffmpeg', plat, exe_name)
+        candidate = os.path.join(base, 'assets', 'ffmpeg', platform, exe_name)
         if os.path.exists(candidate):
             try:
                 if not sys.platform.startswith('win'):
@@ -84,17 +84,18 @@ def estimate_image_capacity(image_path: str) -> int:
 
 
 def estimate_video_capacity(video_path: str) -> int:
-    """Estimate capacity (bytes) for a video by counting frames * pixels * 3 / 8."""
-    # for appended-payload video stego we don't rely on frame LSBs.
-    # report a conservative capacity based on file size (so UI shows reasonable numbers).
+    """Estimate capacity (bytes) for appended-payload video stego.
+
+    Returns -1 to indicate unlimited capacity.
+    The append method has no real limit - you can embed any size message.
+    """
     try:
-        size = os.path.getsize(video_path)
+        if not os.path.exists(video_path):
+            return 0
+        # return sentinel value indicating unlimited capacity
+        return -1
     except Exception:
         return 0
-    # reserve small header/footer space
-    if size <= 1024:
-        return 0
-    return max(0, size - 1024)
 
 
 def embed_message_into_image(input_path: str, output_path: str, message: bytes):
@@ -130,7 +131,7 @@ def extract_message_from_image(input_path: str) -> bytes:
 
 
 def embed_message_into_video(input_path: str, output_path: str, message: bytes):
-    # append the payload to the copied video file's end.
+    # append the payload to the copied video file's end
     if not os.path.exists(input_path):
         raise ValueError("Input video file does not exist")
     marker = b'CLRV1'
@@ -143,7 +144,7 @@ def embed_message_into_video(input_path: str, output_path: str, message: bytes):
 
 
 def extract_message_from_video(input_path: str) -> bytes:
-    # Read appended envelope from end of file. This is robust to compression.
+    # read appended envelope from end of file. This is robust to compression
     if not os.path.exists(input_path):
         raise ValueError("Input video file does not exist")
     marker = b'CLRV1'
@@ -263,6 +264,7 @@ def embed_message_into_video_lsb(input_path: str, output_path: str, message: byt
             return
 
     # fallback: try in-memory VideoWriter approach (may fail depending on codecs)
+    # note: this is unreliable with h264 on windows; consider using FFmpeg instead
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():
         raise ValueError("Input video file does not exist or cannot be opened")
@@ -294,7 +296,11 @@ def embed_message_into_video_lsb(input_path: str, output_path: str, message: byt
     out, used = _open_writer(preferred)
     if out is None:
         cap.release()
-        raise RuntimeError('Failed to open VideoWriter for output; cannot perform LSB embedding')
+        raise RuntimeError(
+            'Failed to open VideoWriter for output; no compatible codec found. '
+            'LSB video embedding works best with FFmpeg. '
+            'Consider using .mkv output format to automatically use FFmpeg.'
+        )
 
     length = len(message)
     payload = length.to_bytes(HEADER_LEN_BYTES, 'big') + message
@@ -302,7 +308,6 @@ def embed_message_into_video_lsb(input_path: str, output_path: str, message: byt
     total_payload_bits = len(payload_bits)
     bit_idx = 0
 
-    idx = 0
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -315,7 +320,6 @@ def embed_message_into_video_lsb(input_path: str, output_path: str, message: byt
                 bit_idx += 1
             frame = flat.reshape(frame.shape)
         out.write(frame)
-        idx += 1
 
     cap.release()
     out.release()
@@ -325,56 +329,75 @@ def extract_message_from_video_lsb(input_path: str) -> bytes:
     """Extract a message embedded using `embed_message_into_video_lsb`.
 
     Returns empty bytes if extraction fails or no valid header found.
+    Uses FFmpeg when available as it handles codecs more reliably.
     """
     ffmpeg = _find_ffmpeg()
     if ffmpeg:
-        with tempfile.TemporaryDirectory() as td:
-            frame_pattern = os.path.join(td, 'frame_%06d.png')
-            cmd = [ffmpeg, '-y', '-i', input_path, '-vsync', '0', frame_pattern]
-            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            frames = sorted(glob.glob(os.path.join(td, 'frame_*.png')))
-            if not frames:
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                frame_pattern = os.path.join(td, 'frame_%06d.png')
+                cmd = [ffmpeg, '-y', '-i', input_path, '-vsync', '0', frame_pattern]
+                subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                frames = sorted(glob.glob(os.path.join(td, 'frame_*.png')))
+                if not frames:
+                    return b''
+                header_bits = []
+                payload_bits = []
+                header_bits_needed = HEADER_LEN_BYTES * 8
+                length = None
+                total_payload_bits = None
+                for fp in frames:
+                    img = Image.open(fp).convert('RGB')
+                    flat = bytearray(img.tobytes())
+                    for byte in flat:
+                        bit = int(byte) & 1
+                        if len(header_bits) < header_bits_needed:
+                            header_bits.append(bit)
+                            if len(header_bits) == header_bits_needed:
+                                header = _bits_to_bytes(header_bits)
+                                length = int.from_bytes(header, 'big')
+                                total_payload_bits = length * 8
+                                if total_payload_bits == 0:
+                                    return b''
+                        else:
+                            if len(payload_bits) < total_payload_bits:
+                                payload_bits.append(bit)
+                            if total_payload_bits is not None and len(payload_bits) >= total_payload_bits:
+                                return _bits_to_bytes(payload_bits)
                 return b''
-            header_bits = []
-            payload_bits = []
-            header_bits_needed = HEADER_LEN_BYTES * 8
-            length = None
-            total_payload_bits = None
-            for fp in frames:
-                img = Image.open(fp).convert('RGB')
-                flat = bytearray(img.tobytes())
-                for byte in flat:
-                    bit = int(byte) & 1
-                    if len(header_bits) < header_bits_needed:
-                        header_bits.append(bit)
-                        if len(header_bits) == header_bits_needed:
-                            header = _bits_to_bytes(header_bits)
-                            length = int.from_bytes(header, 'big')
-                            total_payload_bits = length * 8
-                            if total_payload_bits == 0:
-                                return b''
-                    else:
-                        if len(payload_bits) < total_payload_bits:
-                            payload_bits.append(bit)
-                        if total_payload_bits is not None and len(payload_bits) >= total_payload_bits:
-                            return _bits_to_bytes(payload_bits)
+        except subprocess.CalledProcessError:
+            # ffmpeg failed, return empty to signal extraction failure
             return b''
 
+    # fallback to cv2, but with safeguards against codec issues
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():
-        raise ValueError("Input video file does not exist or cannot be opened")
+        return b''
+
+    # get frame count to prevent infinite loops on codec errors
+    try:
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
+    except Exception:
+        frame_count = 0
+
+    if frame_count == 0:
+        cap.release()
+        return b''
 
     header_bits = []
     payload_bits = []
     header_bits_needed = HEADER_LEN_BYTES * 8
     length = None
     total_payload_bits = None
+    frames_read = 0
+    max_frames_limit = max(frame_count, 10000)  # prevent infinite loops
 
     try:
-        while True:
+        while frames_read < max_frames_limit:
             ret, frame = cap.read()
-            if not ret:
+            if not ret or frame is None or frame.size == 0:
                 break
+            frames_read += 1
             flat = frame.flatten()
             for b in flat:
                 bit = int(b) & 1

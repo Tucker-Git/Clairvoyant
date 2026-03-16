@@ -1,59 +1,50 @@
 # Clairvoyant
 
-> A cross-platform desktop steganography tool for embedding and extracting AES encrypted payloads within images and videos.
+<div align="center">
+  <img src="assets/icon.png" width="128" height="128" alt="Clairvoyant icon" />
+</div>
+
+> Hide secret messages inside images and videos. Optionally encrypt them for extra privacy.
 
 Icons provided by [Icons8](https://icons8.com/)
 
 ---
 
-## Quickstart
+## Getting Started
 
-### Option A: Download a pre-built executable (recommended)
+### Download & Run (recommended)
 
-Pre-built binaries are available on the [Releases](../../releases) page.
+1. Download the latest version from [Releases](../../releases)
+2. **Windows:** Double-click `Clairvoyant-<version>.exe`
+3. **Linux:** Run `./Clairvoyant-<version>` (may need `chmod +x` first)
 
-**Windows:** Download `Clairvoyant-Windows-<version>.exe` and double-click to run.
+### Run from Source
 
-**Ubuntu:** Download `Clairvoyant-Ubuntu-<version>` and run it:
-```bash
-./Clairvoyant-Ubuntu-<version>
-```
-> If you get a permission denied error, mark it executable first: `chmod +x Clairvoyant-Ubuntu-<version>`
-
----
-
-### Option B: Run from source
-
-> To use the experimental LSB video mode you may need to install OpenH264 on your system.
-
-1. Create and activate a virtual environment, then install dependencies:
 ```bash
 python -m venv .venv
 .venv\Scripts\activate      # Windows
 source .venv/bin/activate   # Linux
 pip install -r requirements.txt
-```
-
-2. Run the app:
-```bash
 python main.py
 ```
 
 ---
 
-## Features
+## How It Works
 
-**Image steganography** — embed and extract payloads using 1 LSB per color channel byte, supporting PNG and BMP formats.
+**For Images:** Messages are hidden in PNG or BMP files using invisible pixel-level encoding.
 
-**Video steganography (default)** — appends a structured envelope (marker + length + payload) directly to the video file. This avoids lossy re-encoding and is resilient to container differences, at the cost of increasing the output file size by the size of the payload.
+**For Videos:** Messages are appended to MP4, MKV, MOV, or AVI files. The file stays completely playable while hiding your message inside. For best results with LSB mode, use MKV format.
 
-**Video steganography (experimental LSB mode)** — hides payload bits in per-frame pixel LSBs. This mode is fragile and only survives lossless codecs — lossy re-encoding or container conversion will destroy the payload. When FFmpeg is available, the app will automatically re-encode to lossless frames to improve reliability. Use only in lossless workflows and keep backups of your originals. If you encounter errors, try `.mkv` as your output format.
+**Optional Encryption:** Protect your message with a passphrase using AES-GCM encryption.
 
-**Payload encryption** — optionally encrypt your payload with AES-GCM using a PBKDF2-derived key (passphrase) before embedding.
+**Large Messages:** Use the built-in file loader to embed messages from text files—no more pasting limits.
 
 ---
 
-## Limitations
+## Tips
 
-- Capacity estimates for video are file-size based and should be treated as approximations only.
-- No code signing or native installers are included. Keep backups of original media files before embedding.
+- Always keep backups of original files before embedding
+- Save video files with LSB embedded payloads as .mkv, .mp4 will have issues upon extract
+- Messages embedded in images will increase file size slightly (this is normal)
+- Pasting large amounts of data will cause the application to hang, recommended to utilize .txt file input
