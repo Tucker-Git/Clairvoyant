@@ -38,8 +38,6 @@ python main.py
 
 **Optional Encryption:** Protect your message with a passphrase using AES-GCM encryption.
 
-**Large Messages:** Use the built-in file loader to embed messages from text files—no more pasting limits.
-
 ---
 
 ## Tips
